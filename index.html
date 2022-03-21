@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>SmaPri - NFCオンデマンド印刷サンプル</title>
+  <script>
+    // NFCオンデマンド印刷に切り替え
+    async function SetPort() {
+      let result, responseBody;
+      let url = 'http://localhost:8080/Printer/SetPort?'
+        + '__device_type=bluetooth'
+        + '&' + '__nfc_ondemand=true';  // NFCオンデマンド印刷を使用
+      [result, responseBody] = await HttpRequest(url); // リクエスト送信
+      if (result == 'OK') {
+        window.alert('NFCオンデマンド印刷に切り替わりました。');
+      }
+    }
+
+    // NFCオンデマンド印刷
+    async function NfcOndemandPrint() {
+      let result, responseBody;
+      let url;
+      const loc = location.href;
+      const dir = loc.substring(0, loc.lastIndexOf('/'));   // 現在のフォルダパスを取得
+
+      // フォーマット印刷
+      url = 'http://localhost:8080/Format/Print?'
+        + '__format_archive_url' + '=' + encodeURIComponent(dir + '/' + 'sample.spfmtz')
+        + '&' + '__format_id_number=1'
+        + '&' + '__format_archive_update=update'
+        + '&' + encodeURIComponent('製品名') + '=' + document.getElementById('item').value
+        + '&' + encodeURIComponent('サイズ') + '=' + document.getElementById('size').value
+        + '&' + encodeURIComponent('ロットNo.') + '=' + document.getElementById('lot').value
+        + '&' + encodeURIComponent('(発行枚数)') + '=' + document.getElementById('qty').value;
+      [result, responseBody] = await HttpRequest(url); // リクエスト送信
+      if (result != 'OK') {
+        return;
+      }
+
+      // プリンタ接続状況の確認
+      url = "http://localhost:8080/Printer/Port";
+      [result, responseBody] = await HttpRequest(url); // リクエスト送信
+      if (result == 'OK') {
+        // レスポンスデータより接続中かどうか確認
+        let domparser = new DOMParser();
+        let doc = domparser.parseFromString(responseBody, "text/xml");
+        let connected = doc.getElementsByTagName('connected')[0].childNodes[0].nodeValue;
+        let nfcOndemand = doc.getElementsByTagName('nfcOndemand')[0].childNodes[0].nodeValue;
+        if (nfcOndemand == 'true' && connected == 'false') {
+          location.href = 'smapri:///View/NfcPairing'; // プリンタ未接続時、NFCペアリング画面を開く
+        }
+      }
+    }
+
+    // HTTPリクエスト送信
+    async function HttpRequest(request) {
+      return fetch(request)
+        .then(function (response) {
+          if (response.ok) {
+            return response.text();
+          } else {
+            throw new Error('リクエストエラー (HTTPステータスコード : ' + response.status + ')');
+          }
+        })
+        .then(function (text) {
+          const domparser = new DOMParser();
+          const doc = domparser.parseFromString(text, "text/xml");
+          const result = doc.getElementsByTagName('result')[0].childNodes[0].nodeValue;
+          const message = doc.getElementsByTagName('message')[0].childNodes[0].nodeValue;
+          if (result != 'OK') {
+            window.alert('ラベル発行時にエラーが発生:\n' + message);
+          }
+          document.getElementById('txtresponse').innerText = text;
+          return [result, text];
+        })
+        .catch(function (error) {
+          document.getElementById('txtresponse').innerText = error; // ネットワークエラー
+        })
+    }
+  </script>
+</head>
+
+<body>
+  <h1>NFCオンデマンド印刷</h1>
+  <p><input type="button" onclick="SetPort()" value="NFCオンデマンド印刷に切替"></p>
+  <hr>
+  <p>製品名:<input type="text" id="item" maxlength="10" value="小ネジ"></p>
+  <p>サイズ:<input type="text" id="size" maxlength="6" value="30x10"></p>
+  <p>ロットNo.:<input type="text" id="lot" maxlength="6" value="000001"></p>
+  <p>発行枚数:<input type="number" id="qty" maxlength="4" value="1"></p>
+  <p><input type="button" onclick="NfcOndemandPrint()" value="ラベル発行"><br></p>
+  <hr>
+  <div id="txtresponse"></div>
+</body>
+
+</html>
